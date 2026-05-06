@@ -9,7 +9,7 @@ func (s *FluidSolver) diffuse(prev, curr [][]float64, diff float64) {
 	}
 
 	// Gauss-Seidel relaxation using pre-computed constant
-	a := diff * s.dtWidthHeight
+	a := diff * s.dtWidth / s.invWidth
 	for k := 0; k < s.iterations; k++ {
 		for y := 1; y < s.height-1; y++ {
 			for x := 1; x < s.width-1; x++ {
@@ -22,7 +22,7 @@ func (s *FluidSolver) diffuse(prev, curr [][]float64, diff float64) {
 
 // diffuseVelocity diffuses velocity components directly without copying to scalar fields
 func (s *FluidSolver) diffuseVelocity(diff float64) {
-	a := diff * s.dtWidthHeight
+	a := diff * s.dtWidth / s.invWidth
 
 	// Store original velocity in prev fields for Gauss-Seidel
 	for y := 0; y < s.height; y++ {
@@ -55,13 +55,13 @@ func (s *FluidSolver) diffuseVelocity(diff float64) {
 
 // advect moves quantities along the velocity field (backwards trace)
 func (s *FluidSolver) advect(d, dPrev [][]float64, vel [][][2]float64) {
-	dt0 := s.dtWidth
+	dtX := s.dtWidth
+	dtY := s.dtHeight
 
 	for y := 1; y < s.height-1; y++ {
 		for x := 1; x < s.width-1; x++ {
-			// Trace particle backwards
-			x0 := float64(x) - dt0*vel[y][x][0]
-			y0 := float64(y) - dt0*vel[y][x][1]
+			x0 := float64(x) - dtX*vel[y][x][0]
+			y0 := float64(y) - dtY*vel[y][x][1]
 
 			// Clamp to boundaries
 			if x0 < 0.5 {
@@ -105,11 +105,9 @@ func (s *FluidSolver) project(vel [][][2]float64, p [][]float64) {
 		}
 	}
 
-	h := s.invWidth
-
 	for y := 1; y < s.height-1; y++ {
 		for x := 1; x < s.width-1; x++ {
-			div[y][x] = -0.5 * h * (vel[y][x+1][0] - vel[y][x-1][0] + vel[y+1][x][1] - vel[y-1][x][1])
+			div[y][x] = -0.5 * (s.invWidth*(vel[y][x+1][0]-vel[y][x-1][0]) + s.invHeight*(vel[y+1][x][1]-vel[y-1][x][1]))
 			p[y][x] = 0
 		}
 	}
@@ -129,8 +127,8 @@ func (s *FluidSolver) project(vel [][][2]float64, p [][]float64) {
 	// Subtract pressure gradient from velocity
 	for y := 1; y < s.height-1; y++ {
 		for x := 1; x < s.width-1; x++ {
-			vel[y][x][0] -= 0.5 * (p[y][x+1] - p[y][x-1]) / h
-			vel[y][x][1] -= 0.5 * (p[y+1][x] - p[y-1][x]) / h
+			vel[y][x][0] -= 0.5 * s.invWidth * (p[y][x+1] - p[y][x-1])
+			vel[y][x][1] -= 0.5 * s.invHeight * (p[y+1][x] - p[y-1][x])
 		}
 	}
 	s.setBoundaryVel(vel)

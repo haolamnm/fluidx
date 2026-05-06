@@ -4,8 +4,11 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
-// ASCII density ramp from light to dark
-const densityRamp = " .:-=+*#%@"
+// ASCII density ramp from light to dark (perceptual, ~70 chars)
+const densityRamp = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
+
+// maxSpeedSq caps the color scale (max speed ≈ 5.0)
+const maxSpeedSq = 25.0
 
 // Renderer handles fluid visualization using tcell
 type Renderer struct {
@@ -81,10 +84,10 @@ func (r *Renderer) Render(density [][]float64, velocity [][][2]float64) {
 
 			if r.debugMode {
 				ch = r.velocityToArrow(velRow[x])
-				style = tcell.StyleDefault.Foreground(r.velocityToColor(velRow[x]))
+				style = tcell.StyleDefault.Foreground(r.velocityToColor(velRow[x], 1.0))
 			} else {
 				ch = r.densityToChar(d)
-				style = tcell.StyleDefault.Foreground(r.velocityToColor(velRow[x]))
+				style = tcell.StyleDefault.Foreground(r.velocityToColor(velRow[x], d))
 			}
 
 			r.screen.SetContent(x, y, ch, nil, style)
@@ -105,29 +108,54 @@ func (r *Renderer) densityToChar(d float64) rune {
 	return rune(densityRamp[idx])
 }
 
-// velocityToColor maps velocity to RGB color using squared speed (avoids Sqrt)
-func (r *Renderer) velocityToColor(v [2]float64) tcell.Color {
+// velocityToColor maps velocity and density to RGB color.
+// Density controls brightness, velocity controls hue shift.
+func (r *Renderer) velocityToColor(v [2]float64, d float64) tcell.Color {
 	speedSq := v[0]*v[0] + v[1]*v[1]
-	maxSpeedSq := 25.0
 
 	t := speedSq / maxSpeedSq
 	if t > 1 {
 		t = 1
 	}
-
-	var red, green, blue int32
-
-	if t < 0.5 {
-		red = 0
-		green = int32(t * 2 * 255)
-		blue = int32((1 - t*2) * 255)
-	} else {
-		red = int32((t - 0.5) * 2 * 255)
-		green = int32((1 - t) * 255 * 2)
-		blue = 0
+	if t < 0 {
+		t = 0
+	}
+	if d < 0 {
+		d = 0
+	} else if d > 1 {
+		d = 1
 	}
 
-	return tcell.NewRGBColor(red, green, blue)
+	if d < 0.001 {
+		return tcell.ColorDefault
+	}
+
+	var vr, vg, vb int32
+	if t < 0.5 {
+		vr = 0
+		vg = int32(t * 2 * 255)
+		vb = int32((1 - t*2) * 255)
+	} else {
+		vr = int32((t - 0.5) * 2 * 255)
+		vg = int32((1 - t) * 255 * 2)
+		vb = 0
+	}
+
+	bright := int32(d * 255)
+	rOut := int32(float64(vr)*t + float64(bright)*(1-t))
+	gOut := int32(float64(vg)*t + float64(bright)*(1-t))
+	bOut := int32(float64(vb)*t + float64(bright)*(1-t))
+
+	if rOut > 255 {
+		rOut = 255
+	}
+	if gOut > 255 {
+		gOut = 255
+	}
+	if bOut > 255 {
+		bOut = 255
+	}
+	return tcell.NewRGBColor(rOut, gOut, bOut)
 }
 
 // velocityToArrow converts velocity vector to arrow character

@@ -16,6 +16,7 @@ const (
 	EventMouseClick
 	EventKeyArrow
 	EventKeySpace
+	EventReset
 )
 
 // Event represents an input event with associated data.
@@ -57,6 +58,8 @@ func handleKey(e *tcell.EventKey) Event {
 			return Event{Type: EventQuit}
 		case 'd', 'D':
 			return Event{Type: EventToggleDebug}
+		case 'r', 'R':
+			return Event{Type: EventReset}
 		case ' ':
 			return Event{Type: EventKeySpace}
 		}

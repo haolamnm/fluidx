@@ -102,6 +102,10 @@ func run() error {
 			case input.EventKeySpace:
 				centerX, centerY := width/2, height/2
 				solv.AddDensity(centerX, centerY, 3.0)
+
+			case input.EventReset:
+				solv.Reset()
+				rend.Clear()
 			}
 
 		case <-ticker.C:

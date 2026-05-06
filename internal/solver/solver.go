@@ -1,5 +1,7 @@
 package solver
 
+const decayRate = 0.002 // density dissipation per step (~6s half-life at 60 FPS)
+
 // FluidSolver implements Jos Stam's Stable Fluids method for 2D Navier-Stokes
 // Grid layout: density[y][x], velocity[y][x] = [vx, vy]
 type FluidSolver struct {
@@ -10,17 +12,17 @@ type FluidSolver struct {
 	iterations    int
 
 	// Pre-computed constants for performance
-	dtWidth       float64 // dt * width
-	dtWidthHeight float64 // dt * width * height
-	invWidth      float64 // 1.0 / width
+	dtWidth   float64 // dt * width
+	dtHeight  float64 // dt * height
+	invWidth  float64 // 1.0 / width
+	invHeight float64 // 1.0 / height
 
 	// Current fields
 	density  [][]float64
 	velocity [][][2]float64
 
 	// Previous fields (double buffering)
-	densityPrev  [][]float64
-	velocityPrev [][][2]float64
+	densityPrev [][]float64
 
 	// Temporary scalar fields for velocity operations
 	vxField, vyField         [][]float64
@@ -49,15 +51,15 @@ func NewFluidSolver(width, height int) *FluidSolver {
 
 func (s *FluidSolver) updateConstants() {
 	s.dtWidth = s.dt * float64(s.width)
-	s.dtWidthHeight = s.dt * float64(s.width) * float64(s.height)
+	s.dtHeight = s.dt * float64(s.height)
 	s.invWidth = 1.0 / float64(s.width)
+	s.invHeight = 1.0 / float64(s.height)
 }
 
 func (s *FluidSolver) allocateFields() {
 	s.density = make([][]float64, s.height)
 	s.densityPrev = make([][]float64, s.height)
 	s.velocity = make([][][2]float64, s.height)
-	s.velocityPrev = make([][][2]float64, s.height)
 	s.vxField = make([][]float64, s.height)
 	s.vyField = make([][]float64, s.height)
 	s.vxFieldPrev = make([][]float64, s.height)
@@ -69,7 +71,6 @@ func (s *FluidSolver) allocateFields() {
 		s.density[y] = make([]float64, s.width)
 		s.densityPrev[y] = make([]float64, s.width)
 		s.velocity[y] = make([][2]float64, s.width)
-		s.velocityPrev[y] = make([][2]float64, s.width)
 		s.vxField[y] = make([]float64, s.width)
 		s.vyField[y] = make([]float64, s.width)
 		s.vxFieldPrev[y] = make([]float64, s.width)
@@ -107,28 +108,18 @@ func (s *FluidSolver) AddVelocity(x, y int, vx, vy float64) {
 // Step advances the simulation by one time step
 func (s *FluidSolver) Step() {
 	// Velocity step
-	// 1. Diffuse velocity (viscosity) - operate on velocity components directly
 	s.diffuseVelocity(s.viscosity)
-
-	// 2. Project to make incompressible
 	s.project(s.velocity, s.pressure)
-
-	// 3. Advect velocity (self-advection)
-	// Extract to scalar fields, advect, then write back
-	s.velocityToScalar(s.velocity, s.vxField, s.vyField)
+	s.velocityToScalar(s.velocity, s.vxFieldPrev, s.vyFieldPrev)
 	s.advect(s.vxField, s.vxFieldPrev, s.velocity)
 	s.advect(s.vyField, s.vyFieldPrev, s.velocity)
-	s.scalarToVelocity(s.vxFieldPrev, s.vyFieldPrev, s.velocity)
-
-	// 4. Project again after advection
+	s.scalarToVelocity(s.vxField, s.vyField, s.velocity)
 	s.project(s.velocity, s.pressure)
 
 	// Density step
-	// 1. Diffuse density
 	s.diffuse(s.density, s.densityPrev, s.diffusion)
-
-	// 2. Advect density along velocity field
 	s.advect(s.density, s.densityPrev, s.velocity)
+	s.decayDensity()
 }
 
 // velocityToScalar extracts velocity components to scalar fields
@@ -147,6 +138,26 @@ func (s *FluidSolver) scalarToVelocity(vx, vy [][]float64, vel [][][2]float64) {
 		for x := 0; x < s.width; x++ {
 			vel[y][x][0] = vx[y][x]
 			vel[y][x][1] = vy[y][x]
+		}
+	}
+}
+
+// Reset clears all fields to zero
+func (s *FluidSolver) Reset() {
+	for y := 0; y < s.height; y++ {
+		for x := 0; x < s.width; x++ {
+			s.density[y][x] = 0
+			s.velocity[y][x][0] = 0
+			s.velocity[y][x][1] = 0
+		}
+	}
+}
+
+// decayDensity reduces density by decayRate to prevent saturation
+func (s *FluidSolver) decayDensity() {
+	for y := 0; y < s.height; y++ {
+		for x := 0; x < s.width; x++ {
+			s.density[y][x] *= (1 - decayRate)
 		}
 	}
 }
