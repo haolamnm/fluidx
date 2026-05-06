@@ -1,0 +1,17 @@
+# Binaries
+fluidx
+!/cmd/fluidx/
+fluidx.exe
+
+# AI coding assistant artifacts
+codedb.snapshot
+.commandcode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.out
+*.test
+*.test.exe
