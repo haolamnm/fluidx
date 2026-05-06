@@ -1,111 +1,98 @@
-# fluidx - Project Knowledge Base
+# AGENTS.md
 
-**Generated:** 2025-04-15
-**Language:** Go 1.21
-**Type:** Terminal-based fluid dynamics simulator (Jos Stam's Stable Fluids)
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
-## OVERVIEW
-Real-time 2D Navier-Stokes solver with ASCII/TrueColor rendering. Implements advection, diffusion, and pressure projection using Gauss-Seidel relaxation.
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-## STRUCTURE
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
 ```
-.
-├── cmd/fluidx/          # Application entry point
-│   └── main.go          # 60 FPS game loop, event handling
-├── internal/            # Private implementation
-│   ├── solver/          # Navier-Stokes physics (SEE: internal/solver/AGENTS.md)
-│   ├── renderer/        # TUI/ASCII output (SEE: internal/renderer/AGENTS.md)
-│   └── input/           # Mouse/keyboard events
-├── pkg/fluids/          # EMPTY - reserved for public API
-├── go.mod               # Module: fluidx, tcell v2 dependency
-└── README.md
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
 ```
 
-## WHERE TO LOOK
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-| Task | Location | Notes |
-|------|----------|-------|
-| Entry point | `cmd/fluidx/main.go` | Main loop, event routing |
-| Physics core | `internal/solver/` | Navier-Stokes implementation |
-| Rendering | `internal/renderer/` | ASCII ramp, TrueColor gradients |
-| Input handling | `internal/input/handler.go` | tcell event abstraction |
-| Tests | `internal/solver/solver_test.go` | Only test file in project |
+---
 
-## CODE MAP
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
-| Symbol | Type | File | Role |
-|--------|------|------|------|
-| `main()` | func | cmd/fluidx/main.go | Entry, error handling |
-| `run()` | func | cmd/fluidx/main.go | Main loop with ticker |
-| `NewFluidSolver()` | func | internal/solver/solver.go | Solver constructor |
-| `FluidSolver.Step()` | method | internal/solver/solver.go | Simulation tick |
-| `Renderer.Render()` | method | internal/renderer/renderer.go | Draw frame |
-| `Handler.PollEvent()` | method | internal/input/handler.go | Input abstraction |
+# Project: fluidx
 
-## CONVENTIONS
+Real-time 2D fluid dynamics simulator for the terminal (Jos Stam's Stable Fluids).
 
-**Go Standards:**
-- Standard Go project layout (`cmd/`, `internal/`, `pkg/`)
-- Co-located tests (`*_test.go`)
-- Constructor pattern: `NewType()` functions
-- Error wrapping: `fmt.Errorf("...: %w", err)`
+**Stack:** Go 1.22, tcell/v2 (terminal UI), go-colorful (colors)
 
-**Project-Specific:**
-- Grid indexing: `density[y][x]` (row-major)
-- Double buffering: `density`/`densityPrev` fields
-- Clamp values to [0, 1] before rendering
-- 60 FPS target with `time.NewTicker(frameTime)`
+## Structure
 
-## ANTI-PATTERNS (THIS PROJECT)
+```
+cmd/fluidx/main.go       # Entry, 60 FPS game loop, event routing
+internal/solver/         # Navier-Stokes: advection, diffusion, pressure projection
+  solver.go              # FluidSolver struct, public API, grid: density[y][x], velocity[y][x][0|1]
+  operations.go          # diffuse(), advect(), project(), setBoundary(), setBoundaryVel()
+  solver_test.go         # Tests for basic ops and density propagation
+internal/renderer/       # ASCII ramp + TrueColor velocity visualization
+  renderer.go            # Render(), densityToChar(), velocityToColor(), fastAtan2()
+internal/input/          # tcell event → Event struct conversion
+  handler.go             # PollEvent(screen) returns (Event, done)
+pkg/fluids/              # Empty — reserved for public API
+```
 
-1. **NO binaries in repo** - `fluidx` binary in root is accidental (not in .gitignore)
-2. **NO CI/CD** - No GitHub Actions, Makefile, or automated builds
-3. **NO .gitignore** - Binary and `codedb.snapshot` committed
-4. **NO tests for renderer/input** - Only solver has tests
+## Conventions
 
-## UNIQUE STYLES
-
-**Physics Implementation:**
-- Jos Stam's Stable Fluids method
-- Gauss-Seidel relaxation (20 iterations default)
+- Row-major grid: `field[y][x]`
+- Double buffering: `density`/`densityPrev`, `velocity`/`velocityPrev`
+- Clamp density [0,1] before rendering
+- 60 FPS via `time.NewTicker(frameTime)`
+- Gauss-Seidel relaxation, 20 iterations
+- No-slip boundaries: normal velocity negated at walls
 - Bilinear interpolation in advection
-- No-slip boundary conditions (velocity negated at walls)
-
-**Rendering:**
-- ASCII density ramp: `" .:-=+*#%@"`
-- TrueColor velocity visualization (blue→green→yellow→red)
-- Debug mode: velocity arrows (→↘↓↙←↖↑↗)
-
-## COMMANDS
-
-```bash
-# Build
-go build ./cmd/fluidx
-
-# Run
-./fluidx
-
-# Test
-go test ./...
-
-# Install from remote
-go install github.com/yourusername/fluidx/cmd/fluidx@latest
-```
-
-## CONTROLS
-
-| Input | Action |
-|-------|--------|
-| Mouse move | Inject velocity (stir fluid) |
-| Mouse click/hold | Inject density (smoke) |
-| Arrow keys | Inject velocity at center |
-| Space | Inject density at center |
-| `d` | Toggle debug (velocity arrows) |
-| `q`/ESC/Ctrl+C | Quit |
-
-## NOTES
-
-- **Empty pkg/fluids/** - Reserved for future public API types
-- **Resize support** - Terminal resize reinitializes solver grid
-- **Performance** - 60 FPS cap prevents excessive CPU
-- **Dependencies** - Only `tcell/v2` (terminal UI) + `go-colorful` (colors)
+- Pre-computed constants: `dtWidth`, `dtWidthHeight`, `invWidth`
+- Only solver has tests (renderer/input untested)
